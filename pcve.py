@@ -4,13 +4,18 @@ from datetime import datetime, timedelta, timezone
 import os
 import sqlite3
 import json
+from pathlib import Path
+import shutil
+
+
 
 
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
 download_date = current_datetime.strftime("%Y-%m-%d_%H00Z")
 
-if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
+
+def download_full_cve():
     # URL-адрес архива
     url = f"https://github.com/CVEProject/cvelistV5/archive/refs/tags/cve_{download_date}.zip"
 
@@ -24,13 +29,12 @@ if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"):
     # Распаковка архива
     with zipfile.ZipFile("tmp_full/tmp_full.zip", "r") as zip_ref:
         zip_ref.extractall("tmp_full")
-
+        
     # Удаление ненужных файлов
-    os.remove(f"tmp_full/cvelistV5-{download_date}/cves/deltaLog.json")
-    os.remove(f"tmp_full/cvelistV5-{download_date}/cves/delta.json")
-    os.remove(f"tmp_full/cvelistV5-{download_date}/cves/tmp_full.zip")
-else:
-    print("Папка не пустая!")
+    os.remove(f"tmp_full/tmp_full.zip")
+    shutil.rmtree(f'tmp_full/cvelistV5-cve_{download_date}')
+    with open(f'tmp_full/install_complete', 'w'):
+        pass
 
 def process_json_files(folder_path, db_path):
     # Connect to database
@@ -69,12 +73,17 @@ def process_json_files(folder_path, db_path):
     # Close connection
     conn.close()
 
+if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
+    download_full_cve()
 
 # Specify folder path and database path
-folder_path = "tmp_full/cvelistV5-cve_2024-02-12_0900Z/cves/2024/25xxx/"
+folder_path = f"tmp_full/cvelistV5-cve_{download_date}/cves/2024/25xxx/"
 db_path = "db/pcve.db"
-# Process JSON files
-# process_json_files(folder_path, db_path)
+
+# add JSON files in db BLOB
+if not os.path.exists('tmp_full/install_complete'):
+    add_json_files(folder_path, db_path)
+
 conn = sqlite3.connect(db_path)
 c = conn.cursor()
 
@@ -85,43 +94,43 @@ blob_data = c.execute("SELECT jsonData FROM cve WHERE cveId = ?", (cveId,)).fetc
 json_data = json.loads(blob_data)
 
 cve_id = json_data['cveMetadata']['cveId']
+print(f"CVE ID: {cve_id}")
+
 descriptions = json_data['containers']['cna']['descriptions']
 descriptions_values = [description["value"] for description in descriptions]
 first_description_value = descriptions_values[0]
-
-# affected = json_data['containers']['cna']['affected']
-# affected_values = [affected["productt"] for affected in affected]
-
-# product_affected_values = affected_values[0]
-
-# print(f"Product: {product_affected_values}")
-
-
-affected = json_data['containers']['cna']['affected']
-affected_values = [affected["product"] for affected in affected]
-product_affected_values = affected_values[0]
-# Проверка существования ключа "product"
-if "product" in affected["product"]:
-    # Извлечение значения "product"
-    product_value = affected["product"]
-
-    # Удаление лишних пробелов (опционально)
-    # product_value = product_value.strip()
-
-    # Проверка на пустое значение
-    if product_value:
-        print(f"Product: {product_value}")
-    else:
-        print("Product key exists, but the value is empty.")
-else:
-    print("Product key does not exist.")
-
-
-
-
-print(f"CVE ID: {cve_id}")
 print(f"Description: {first_description_value}")
 
-# print(f"Product: {produc}")
+if "exploits" in json_data["containers"]["cna"]:
+    exploits = json_data["containers"]["cna"]["exploits"]
+    first_exploits_value = exploits_values[0]
+    print(f"exploits: {first_exploits_value}")
+
+
+affecteds = json_data['containers']['cna']['affected']
+affecteds_values = [affected["product"] for affected in affecteds]
+product_affecteds_value = affecteds_values[0]
+print(f"Product: {product_affecteds_value}")
+
+affecteds_values = [affected["vendor"] for affected in affecteds]
+vendor_affecteds_value = affecteds_values[0]
+print(f"Vendor: {vendor_affecteds_value}")
+
+metrics = json_data['containers']['cna']['metrics']
+metrics_values = [metric["cvssV3_1"] for metric in metrics]
+cvssV3_1_metrics_value = metrics_values[0]
+version_metrics_value = cvssV3_1_metrics_value["version"]
+attackVector_metrics_value = cvssV3_1_metrics_value["attackVector"]
+attackComplexity_metrics_value = cvssV3_1_metrics_value["attackComplexity"]
+baseSeverity_metrics_value = cvssV3_1_metrics_value["baseSeverity"]
+print(f"CVSS version: {version_metrics_value}")
+print(f"attackVector: {attackVector_metrics_value}")
+print(f"attackComplexity: {attackComplexity_metrics_value}")
+print(f"LVL: {baseSeverity_metrics_value}")
+
+
+
+
+
 
 conn.close()
