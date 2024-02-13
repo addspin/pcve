@@ -6,7 +6,10 @@ import sqlite3
 import json
 from pathlib import Path
 import shutil
+import telegram
 
+bot = telegram.Bot(token='6379047592:AAGF_dv5GUOry9vDph03-bNAWdbpFQR4AJI')
+chat_id = '-4189268332'
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
 download_date = current_datetime.strftime("%Y-%m-%d_%H00Z")
@@ -15,8 +18,78 @@ download_only_date = current_datetime.strftime("%Y-%m-%d")
 
 # Specify folder full-delta cve path and database path
 folder_path_full = f"tmp_full/cvelistV5-cve_{download_date}/cves/2024/25xxx/"
-folder_path_delta = f"tmp_delta/{download_only_date}_delta_CVEs_at_{download_time}/deltaCves/"
+# folder_path_delta = f"tmp_delta/{download_only_date}_delta_CVEs_at_{download_time}/deltaCves/"
+folder_path_delta = f"tmp_delta/deltaCves/"
 db_path = "db/pcve.db"
+
+async def send_cve_to_telegram(cveId):
+    
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+
+    # cveId = "CVE-2024-25100"
+
+    blob_data = c.execute("SELECT jsonData FROM cve WHERE cveId = ?", (cveId,)).fetchone()[0]
+
+    json_data = json.loads(blob_data)
+
+    cve_id = json_data['cveMetadata']['cveId']
+    # print(f"CVE ID: {cve_id}")
+
+    descriptions = json_data['containers']['cna']['descriptions']
+    descriptions_values = [description["value"] for description in descriptions]
+    first_description_value = descriptions_values[0]
+    # print(f"Description: {first_description_value}")
+
+    if "exploits" in json_data["containers"]["cna"]:
+        exploits_values = json_data["containers"]["cna"]["exploits"]
+        first_exploits_value = exploits_values[0]
+        # print(f"exploits: {first_exploits_value}")
+    else:
+        first_exploits_value = 'n.d'
+
+
+    affecteds = json_data['containers']['cna']['affected']
+    affecteds_values = [affected["product"] for affected in affecteds]
+    product_affecteds_value = affecteds_values[0]
+    # print(f"Product: {product_affecteds_value}")
+
+    affecteds_values = [affected["vendor"] for affected in affecteds]
+    vendor_affecteds_value = affecteds_values[0]
+    # print(f"Vendor: {vendor_affecteds_value}")
+    if "metrics" in json_data["containers"]["cna"]:
+        metrics = json_data['containers']['cna']['metrics']
+        metrics_values = [metric["cvssV3_1"] for metric in metrics]
+        cvssV3_1_metrics_value = metrics_values[0]
+        version_metrics_value = cvssV3_1_metrics_value["version"]
+        attackVector_metrics_value = cvssV3_1_metrics_value["attackVector"]
+        attackComplexity_metrics_value = cvssV3_1_metrics_value["attackComplexity"]
+        baseSeverity_metrics_value = cvssV3_1_metrics_value["baseSeverity"]
+        # print(f"CVSS version: {version_metrics_value}")
+        # print(f"attackVector: {attackVector_metrics_value}")
+        # print(f"attackComplexity: {attackComplexity_metrics_value}")
+        # print(f"LVL: {baseSeverity_metrics_value}")
+    else:
+        cvssV3_1_metrics_value = "no data"
+        version_metrics_value = "no data"
+        attackVector_metrics_value =  "no data"
+        attackComplexity_metrics_value =  "no data"
+        baseSeverity_metrics_value = "no data"
+
+
+    conn.close()
+
+    message = f'''Новая CVE обнаружена:\n
+        CVE ID: {cve_id}\n
+        CVSS version: {version_metrics_value}\n
+        LVL: {baseSeverity_metrics_value}\n
+        Product: {product_affecteds_value}\n
+        Vendor: {vendor_affecteds_value}\n
+        Description: {first_description_value}\n
+        Attack Vector: {attackVector_metrics_value}\n
+        Attack Complexity: {attackComplexity_metrics_value}\n
+        Exploits: {first_exploits_value}\n'''
+    asyncio.run(bot.send_message(chat_id={chat_id}, text=message))
 
 def download_full_cve():
     # URL-адрес архива
@@ -46,8 +119,8 @@ def download_full_cve():
 def download_delta_cve():
     # URL-адрес архива
     url = f"https://github.com/CVEProject/cvelistV5/releases/download/cve_{download_date}/{download_only_date}_delta_CVEs_at_{download_time}.zip"
-   
 
+   
     # Скачивание архива
     response = requests.get(url)
 
@@ -64,9 +137,11 @@ def download_delta_cve():
         
     # Удаление ненужных файлов
     os.remove(f"tmp_delta/tmp_delta.zip")
-    shutil.rmtree(f'tmp_delta/{download_only_date}_delta_CVEs_at_{download_time}')
-    with open(f'tmp_full/install_complete', 'w'):
-        pass
+    shutil.rmtree(f'{folder_path_delta}')
+
+    # with open(f'tmp_delta/complete', 'w'):
+    #     pass
+    
 
 def add_full_cve_json_files(folder_path_full, db_path):
     # Connect to database
@@ -101,10 +176,9 @@ def add_full_cve_json_files(folder_path_full, db_path):
                          VALUES (?, ?)""", (cveId, json.dumps(json_data)))
             conn.commit()
             print(f"CVE record with ID {cveId} inserted successfully.")
-
     # Close connection
     conn.close()
-
+   
 def add_delta_cve_json_files(folder_path_delta, db_path):
     # Connect to database
     conn = sqlite3.connect(db_path)
@@ -139,68 +213,23 @@ def add_delta_cve_json_files(folder_path_delta, db_path):
             conn.commit()
             print(f"CVE record with ID {cveId} inserted successfully.")
 
+        send_cve_to_telegram(cveId)
     # Close connection
     conn.close()
+    
 
 ## if not install - INIT!
 if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
     download_full_cve()
 
-# # Specify folder path and database path
-# folder_path = f"tmp_full/cvelistV5-cve_{download_date}/cves/2024/25xxx/"
-# db_path = "db/pcve.db"
+download_delta_cve()
 
-# # add JSON files in db BLOB
-# if not os.path.exists('tmp_full/install_complete'):
-#     add_json_files(folder_path, db_path)
-
-conn = sqlite3.connect(db_path)
-c = conn.cursor()
-
-cveId = "CVE-2024-25100"
-
-blob_data = c.execute("SELECT jsonData FROM cve WHERE cveId = ?", (cveId,)).fetchone()[0]
-
-json_data = json.loads(blob_data)
-
-cve_id = json_data['cveMetadata']['cveId']
-print(f"CVE ID: {cve_id}")
-
-descriptions = json_data['containers']['cna']['descriptions']
-descriptions_values = [description["value"] for description in descriptions]
-first_description_value = descriptions_values[0]
-print(f"Description: {first_description_value}")
-
-if "exploits" in json_data["containers"]["cna"]:
-    exploits_values = json_data["containers"]["cna"]["exploits"]
-    first_exploits_value = exploits_values[0]
-    print(f"exploits: {first_exploits_value}")
-
-
-affecteds = json_data['containers']['cna']['affected']
-affecteds_values = [affected["product"] for affected in affecteds]
-product_affecteds_value = affecteds_values[0]
-print(f"Product: {product_affecteds_value}")
-
-affecteds_values = [affected["vendor"] for affected in affecteds]
-vendor_affecteds_value = affecteds_values[0]
-print(f"Vendor: {vendor_affecteds_value}")
-
-metrics = json_data['containers']['cna']['metrics']
-metrics_values = [metric["cvssV3_1"] for metric in metrics]
-cvssV3_1_metrics_value = metrics_values[0]
-version_metrics_value = cvssV3_1_metrics_value["version"]
-attackVector_metrics_value = cvssV3_1_metrics_value["attackVector"]
-attackComplexity_metrics_value = cvssV3_1_metrics_value["attackComplexity"]
-baseSeverity_metrics_value = cvssV3_1_metrics_value["baseSeverity"]
-print(f"CVSS version: {version_metrics_value}")
-print(f"attackVector: {attackVector_metrics_value}")
-print(f"attackComplexity: {attackComplexity_metrics_value}")
-print(f"LVL: {baseSeverity_metrics_value}")
+# if not os.path.isdir("tmp_delta") or not os.listdir("tmp_delta"):
+#     os.remove(f"tmp_delta/tmp_delta.zip") 
+#     shutil.rmtree(f'tmp_full/cvelistV5-cve_{download_date}')
 
 
 
 
 
 
-conn.close()
