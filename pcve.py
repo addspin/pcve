@@ -7,13 +7,16 @@ import json
 from pathlib import Path
 import shutil
 
-
-
-
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
 download_date = current_datetime.strftime("%Y-%m-%d_%H00Z")
+download_time = current_datetime.strftime("%H00Z")
+download_only_date = current_datetime.strftime("%Y-%m-%d")
 
+# Specify folder full-delta cve path and database path
+folder_path_full = f"tmp_full/cvelistV5-cve_{download_date}/cves/2024/25xxx/"
+folder_path_delta = f"tmp_delta/{download_only_date}_delta_CVEs_at_{download_time}/deltaCves/"
+db_path = "db/pcve.db"
 
 def download_full_cve():
     # URL-адрес архива
@@ -30,13 +33,42 @@ def download_full_cve():
     with zipfile.ZipFile("tmp_full/tmp_full.zip", "r") as zip_ref:
         zip_ref.extractall("tmp_full")
         
+    # add JSON files in db BLOB
+    # if not os.path.exists('tmp_full/install_complete'):
+    add_full_cve_json_files(folder_path_full, db_path)
+
     # Удаление ненужных файлов
     os.remove(f"tmp_full/tmp_full.zip")
     shutil.rmtree(f'tmp_full/cvelistV5-cve_{download_date}')
     with open(f'tmp_full/install_complete', 'w'):
         pass
 
-def process_json_files(folder_path, db_path):
+def download_delta_cve():
+    # URL-адрес архива
+    url = f"https://github.com/CVEProject/cvelistV5/releases/download/cve_{download_date}/{download_only_date}_delta_CVEs_at_{download_time}.zip"
+   
+
+    # Скачивание архива
+    response = requests.get(url)
+
+    # Сохранение архива
+    with open("tmp_delta/tmp_delta.zip", "wb") as f:
+        f.write(response.content)
+
+    # Распаковка архива
+    with zipfile.ZipFile("tmp_delta/tmp_delta.zip", "r") as zip_ref:
+        zip_ref.extractall("tmp_delta")
+
+    # add delta JSON files in db BLOB
+    add_delta_cve_json_files(folder_path_delta, db_path)
+        
+    # Удаление ненужных файлов
+    os.remove(f"tmp_delta/tmp_delta.zip")
+    shutil.rmtree(f'tmp_delta/{download_only_date}_delta_CVEs_at_{download_time}')
+    with open(f'tmp_full/install_complete', 'w'):
+        pass
+
+def add_full_cve_json_files(folder_path_full, db_path):
     # Connect to database
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -49,8 +81,8 @@ def process_json_files(folder_path, db_path):
     )''')
 
     # Iterate through JSON files
-    for filename in os.listdir(folder_path):
-        filepath = os.path.join(folder_path, filename)
+    for filename in os.listdir(folder_path_full):
+        filepath = os.path.join(folder_path_full, filename)
         with open(filepath, 'r') as f:
             json_data = json.load(f)
 
@@ -73,16 +105,54 @@ def process_json_files(folder_path, db_path):
     # Close connection
     conn.close()
 
+def add_delta_cve_json_files(folder_path_delta, db_path):
+    # Connect to database
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+
+    # Create table if not exists
+    c.execute('''CREATE TABLE IF NOT EXISTS cve (
+        cveId TEXT PRIMARY KEY NOT NULL UNIQUE,
+        jsonData BLOB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # Iterate through JSON files
+    for filename in os.listdir(folder_path_delta):
+        filepath = os.path.join(folder_path_delta, filename)
+        with open(filepath, 'r') as f:
+            json_data = json.load(f)
+
+        cveId = json_data['cveMetadata']['cveId']
+
+        # Check for existing entry
+        existing_entry = c.execute("SELECT * FROM cve WHERE cveId = ?", (cveId,)).fetchone()
+
+        if existing_entry:
+            c.execute("""UPDATE cve SET jsonData = ?
+                             WHERE cveId = ?""", (json.dumps(json_data), cveId))
+            conn.commit()
+        else:
+            # Insert new record
+            c.execute("""INSERT INTO cve (cveId, jsonData)
+                         VALUES (?, ?)""", (cveId, json.dumps(json_data)))
+            conn.commit()
+            print(f"CVE record with ID {cveId} inserted successfully.")
+
+    # Close connection
+    conn.close()
+
+## if not install - INIT!
 if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
     download_full_cve()
 
-# Specify folder path and database path
-folder_path = f"tmp_full/cvelistV5-cve_{download_date}/cves/2024/25xxx/"
-db_path = "db/pcve.db"
+# # Specify folder path and database path
+# folder_path = f"tmp_full/cvelistV5-cve_{download_date}/cves/2024/25xxx/"
+# db_path = "db/pcve.db"
 
-# add JSON files in db BLOB
-if not os.path.exists('tmp_full/install_complete'):
-    add_json_files(folder_path, db_path)
+# # add JSON files in db BLOB
+# if not os.path.exists('tmp_full/install_complete'):
+#     add_json_files(folder_path, db_path)
 
 conn = sqlite3.connect(db_path)
 c = conn.cursor()
@@ -102,7 +172,7 @@ first_description_value = descriptions_values[0]
 print(f"Description: {first_description_value}")
 
 if "exploits" in json_data["containers"]["cna"]:
-    exploits = json_data["containers"]["cna"]["exploits"]
+    exploits_values = json_data["containers"]["cna"]["exploits"]
     first_exploits_value = exploits_values[0]
     print(f"exploits: {first_exploits_value}")
 
