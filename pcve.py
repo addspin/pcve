@@ -7,9 +7,13 @@ import json
 from pathlib import Path
 import shutil
 import telegram
+from celery import Celery
 
 bot = telegram.Bot(token='6379047592:AAGF_dv5GUOry9vDph03-bNAWdbpFQR4AJI')
 chat_id = '-4189268332'
+
+app = Celery('pcve', broker='redis://localhost:6379')
+
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
 download_date = current_datetime.strftime("%Y-%m-%d_%H00Z")
@@ -18,10 +22,10 @@ download_only_date = current_datetime.strftime("%Y-%m-%d")
 
 # Specify folder full-delta cve path and database path
 folder_path_full = f"tmp_full/cvelistV5-cve_{download_date}/cves/2024/25xxx/"
-# folder_path_delta = f"tmp_delta/{download_only_date}_delta_CVEs_at_{download_time}/deltaCves/"
 folder_path_delta = f"tmp_delta/deltaCves/"
 db_path = "db/pcve.db"
 
+@app.task
 async def send_cve_to_telegram(cveId):
     
     conn = sqlite3.connect(db_path)
@@ -57,39 +61,59 @@ async def send_cve_to_telegram(cveId):
     affecteds_values = [affected["vendor"] for affected in affecteds]
     vendor_affecteds_value = affecteds_values[0]
     # print(f"Vendor: {vendor_affecteds_value}")
+
+    version = None
+    attackVector = None
+    attackComplexity = None
+    baseSeverity = None
+
     if "metrics" in json_data["containers"]["cna"]:
         metrics = json_data['containers']['cna']['metrics']
-        metrics_values = [metric["cvssV3_1"] for metric in metrics]
-        cvssV3_1_metrics_value = metrics_values[0]
-        version_metrics_value = cvssV3_1_metrics_value["version"]
-        attackVector_metrics_value = cvssV3_1_metrics_value["attackVector"]
-        attackComplexity_metrics_value = cvssV3_1_metrics_value["attackComplexity"]
-        baseSeverity_metrics_value = cvssV3_1_metrics_value["baseSeverity"]
-        # print(f"CVSS version: {version_metrics_value}")
-        # print(f"attackVector: {attackVector_metrics_value}")
-        # print(f"attackComplexity: {attackComplexity_metrics_value}")
-        # print(f"LVL: {baseSeverity_metrics_value}")
-    else:
-        cvssV3_1_metrics_value = "no data"
-        version_metrics_value = "no data"
-        attackVector_metrics_value =  "no data"
-        attackComplexity_metrics_value =  "no data"
-        baseSeverity_metrics_value = "no data"
+        # print("TEST metrics ---", metrics)
+        cvssV3_1_metrics_value = metrics[0]
+        version = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("version", "n\d")
+        attackVector = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("attackVector", "n\d")
+        attackComplexity = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("attackComplexity", "n\d")
+        baseSeverity = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("baseSeverity", "n\d")
+        
+        # print("cvssV3_1_metrics_value", cvssV3_1_metrics_value)
+        # metrics_values = [metric["value"] for metric in cvssV3_1_metrics_value]
+        # metrics_values = [metric["cvssV3_1"] for metric in metrics]
+        # print("TEST ---", version)
+        # cvssV3_1_metrics_value = metrics_values[0]
+        # version_metrics_value = cvssV3_1_metrics_value["version"]
+        # attackVector_metrics_value = cvssV3_1_metrics_value["attackVector"]
+        # attackComplexity_metrics_value = cvssV3_1_metrics_value["attackComplexity"]
+        # baseSeverity_metrics_value = cvssV3_1_metrics_value["baseSeverity"]
+        # print(f"CVSS version: {version}")
+        # print(f"attackVector: {attackVector}")
+        # print(f"attackComplexity: {attackComplexity}")
+        # print(f"LVL: {baseSeverity}")
+    # else:
+    #     # cvssV3_1_metrics_value = "no data"
+    #     # version_metrics_value = "no data"
+    #     attackVector_metrics_value =  "no data"
+    #     attackComplexity_metrics_value =  "no data"
+    #     baseSeverity_metrics_value = "no data"
 
 
     conn.close()
 
     message = f'''Новая CVE обнаружена:\n
         CVE ID: {cve_id}\n
-        CVSS version: {version_metrics_value}\n
-        LVL: {baseSeverity_metrics_value}\n
+        CVSS version: {version}\n
+        LVL: {baseSeverity}\n
         Product: {product_affecteds_value}\n
         Vendor: {vendor_affecteds_value}\n
         Description: {first_description_value}\n
-        Attack Vector: {attackVector_metrics_value}\n
-        Attack Complexity: {attackComplexity_metrics_value}\n
+        Attack Vector: {attackVector}\n
+        Attack Complexity: {attackComplexity}\n
         Exploits: {first_exploits_value}\n'''
-    asyncio.run(bot.send_message(chat_id={chat_id}, text=message))
+   
+    await bot.send_message(chat_id=chat_id, text=message)
+    
+    
+   
 
 def download_full_cve():
     # URL-адрес архива
@@ -212,8 +236,14 @@ def add_delta_cve_json_files(folder_path_delta, db_path):
                          VALUES (?, ?)""", (cveId, json.dumps(json_data)))
             conn.commit()
             print(f"CVE record with ID {cveId} inserted successfully.")
-
+        
+        # cveId = "CVE-2023-3235"
+        # print("КАКОЙ CVE", cveId)
         send_cve_to_telegram(cveId)
+        
+        # for cveId in cveId:
+        #     asyncio.run(send_cve_to_telegram(cveId))
+        
     # Close connection
     conn.close()
     
@@ -222,11 +252,13 @@ def add_delta_cve_json_files(folder_path_delta, db_path):
 if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
     download_full_cve()
 
-download_delta_cve()
-
+# Временно для тестов !!!!
 # if not os.path.isdir("tmp_delta") or not os.listdir("tmp_delta"):
 #     os.remove(f"tmp_delta/tmp_delta.zip") 
 #     shutil.rmtree(f'tmp_full/cvelistV5-cve_{download_date}')
+
+download_delta_cve()
+
 
 
 
