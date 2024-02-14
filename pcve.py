@@ -17,7 +17,7 @@ bot = aiogram.Bot(token='6379047592:AAGF_dv5GUOry9vDph03-bNAWdbpFQR4AJI')
 group_id = '-4142947007'
 channel_id = '-1002009744461'
 
-app = Celery('pcve', broker='redis://localhost:6379/0')
+# app = Celery('pcve', broker='redis://localhost:6379/0')
 
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
@@ -33,7 +33,7 @@ db_path = "db/pcve.db"
 
 message_count = 0
 max_messages = 19
-@app.task
+# @app.task
 async def send_cve_to_telegram(cveId):
     global message_count
     if message_count >= max_messages:

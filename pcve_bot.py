@@ -30,4 +30,6 @@ def webhook():
     # ...
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8443)
+    app.run(host='0.0.0.0', port=8080)
+
+    add action=dst-nat chain=dstnat dst-port=443 in-interface-list=WAN protocol=tcp to-addresses=10.13.1.80 to-ports=8080
