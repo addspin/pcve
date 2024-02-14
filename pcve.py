@@ -20,7 +20,7 @@ group_id = '-4142947007'
 channel_id = '-1002009744461'
 
 app = Celery('pcve', broker='redis://localhost:6379/0')
-# app = Celery('pcve')
+
 
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
@@ -111,11 +111,7 @@ async def send_cve_to_telegram(cveId):
    
     try:
         await bot.send_message(chat_id=group_id, text=message, parse_mode="HTML")
-        # await bot.close()
     except Exception as e:
-        # await asyncio.sleep(30)
-        # await send_cve_to_telegram(cveId)
-        # asyncio.run(send_cve_to_telegram(cveId))
         print(f"Ошибка при отправке сообщения: {e}")
 
     # asyncio.run(send_cve_to_telegram(cveId))
@@ -162,21 +158,14 @@ def download_delta_cve():
         zip_ref.extractall("tmp_delta")
     
     # add delta JSON files in db BLOB
-    # if __name__ == "__main__":
     async def add_delta():
         await add_delta_cve_json_files(folder_path_delta, db_path)
-    
     asyncio.run(add_delta())
         # app.start()
-        
 
-        
     # Удаление ненужных файлов
     os.remove(f"tmp_delta/tmp_delta.zip")
     shutil.rmtree(f'{folder_path_delta}')
-
-    # with open(f'tmp_delta/complete', 'w'):
-    #     pass
     
 
 def add_full_cve_json_files(folder_path_full, db_path):
@@ -216,7 +205,6 @@ def add_full_cve_json_files(folder_path_full, db_path):
     conn.close()
    
 count = 0
-
 async def add_delta_cve_json_files(folder_path_delta, db_path):
     
     # Connect to database
@@ -259,14 +247,9 @@ async def add_delta_cve_json_files(folder_path_delta, db_path):
     # Close connection
     conn.close()
 
-
-
-
-
 ## if not install - INIT!
 if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
     download_full_cve()
-
 
 download_delta_cve()
 
