@@ -6,12 +6,10 @@ import sqlite3
 import json
 from pathlib import Path
 import shutil
-# import redis
 
 import telegram
 import aiogram
 import asyncio
-from celery import Celery
 
 
 # bot = telegram.Bot(token='6379047592:AAGF_dv5GUOry9vDph03-bNAWdbpFQR4AJI')
