@@ -6,12 +6,10 @@ import sqlite3
 import json
 from pathlib import Path
 import shutil
-import redis
+# import redis
 
 import telegram
 import aiogram
-from aiogram.filters import Filter
-from aiogram.types import Message
 import asyncio
 from celery import Celery
 
@@ -21,7 +19,8 @@ bot = aiogram.Bot(token='6379047592:AAGF_dv5GUOry9vDph03-bNAWdbpFQR4AJI')
 group_id = '-4142947007'
 channel_id = '-1002009744461'
 
-app = Celery('pcve', broker='redis://localhost:6379')
+app = Celery('pcve', broker='redis://localhost:6379/0')
+# app = Celery('pcve')
 
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
@@ -36,12 +35,12 @@ db_path = "db/pcve.db"
 
 
 message_count = 0
-max_messages = 20
+max_messages = 19
 @app.task
 async def send_cve_to_telegram(cveId):
     global message_count
     if message_count >= max_messages:
-        await asyncio.sleep(60)  # Пауза на 1 минуту
+        await asyncio.sleep(300)  # Пауза на 1 минуту
         message_count = 0
     message_count += 1
     
@@ -54,24 +53,24 @@ async def send_cve_to_telegram(cveId):
 
     cve_id = json_data['cveMetadata']['cveId']
 
-    first_description_value = None
+    first_description_value = " "
 
     if "descriptions" in json_data["containers"]["cna"]:
         descriptions = json_data['containers']['cna']['descriptions']
         descriptions_values = [description["value"] for description in descriptions]
         first_description_value = descriptions_values[0]
-        print(f"Description: ---- {first_description_value}")
+        # print(f"Description: ---- {first_description_value}")
 
+    exploits = " "
     if "exploits" in json_data["containers"]["cna"]:
         exploits_values = json_data["containers"]["cna"]["exploits"]
         first_exploits_value = exploits_values[0]
-        # print(f"exploits: {first_exploits_value}")
-    else:
-        first_exploits_value = 'n.d'
+        exploits = first_exploits_value.get("value", " ")
 
-    affecteds = None
-    product_affecteds_value = None
-    vendor_affecteds_value = None
+
+    affecteds = " "
+    product_affecteds_value = " "
+    vendor_affecteds_value = " "
 
     if "affected" in json_data["containers"]["cna"]:
         affecteds = json_data['containers']['cna']['affected']
@@ -83,22 +82,21 @@ async def send_cve_to_telegram(cveId):
         vendor_affecteds_value = affecteds_values[0]
         # print(f"Vendor: {vendor_affecteds_value}")
 
-    version = None
-    attackVector = None
-    attackComplexity = None
-    baseSeverity = None
+    version = " "
+    attackVector = " "
+    attackComplexity = " "
+    baseSeverity =  ""
 
     if "metrics" in json_data["containers"]["cna"]:
         metrics = json_data['containers']['cna']['metrics']
         # print("TEST metrics ---", metrics)
         cvssV3_1_metrics_value = metrics[0]
-        version = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("version", "n\d")
-        attackVector = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("attackVector", "n\d")
-        attackComplexity = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("attackComplexity", "n\d")
-        baseSeverity = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("baseSeverity", "n\d")
+        version = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("version", " ")
+        attackVector = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("attackVector", " ")
+        attackComplexity = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("attackComplexity", " ")
+        baseSeverity = cvssV3_1_metrics_value.get("cvssV3_1", {}).get("baseSeverity", " ")
 
-
-    # conn.close()
+    conn.close()
 
     message = f'''Новые CVE на {download_date}:\n
 <b>CVE ID:</b> {cve_id}
@@ -108,14 +106,19 @@ async def send_cve_to_telegram(cveId):
 <b>Vendor:</b> {vendor_affecteds_value}
 <b>Attack Vector:</b> {attackVector}
 <b>Attack Complexity:</b> {attackComplexity}
-<b>Exploits:</b> {first_exploits_value}\n
-<b>Description:</b> {first_description_value}'''
-    escaped_message = aiogram.utils.formatting.as_html(message)
+<b>Exploits:</b> {exploits}\n
+<b>Description:</b> {first_description_value}\n'''
    
-    await bot.send_message(chat_id=group_id, text=escaped_message, parse_mode="HTML")
-    
-    
-   
+    try:
+        await bot.send_message(chat_id=group_id, text=message, parse_mode="HTML")
+        # await bot.close()
+    except Exception as e:
+        # await asyncio.sleep(30)
+        # await send_cve_to_telegram(cveId)
+        # asyncio.run(send_cve_to_telegram(cveId))
+        print(f"Ошибка при отправке сообщения: {e}")
+
+    # asyncio.run(send_cve_to_telegram(cveId))
 
 def download_full_cve():
     # URL-адрес архива
@@ -159,11 +162,13 @@ def download_delta_cve():
         zip_ref.extractall("tmp_delta")
     
     # add delta JSON files in db BLOB
-    if __name__ == "__main__":
-        async def main():
-            await add_delta_cve_json_files(folder_path_delta, db_path)
-            
-        asyncio.run(main())
+    # if __name__ == "__main__":
+    async def add_delta():
+        await add_delta_cve_json_files(folder_path_delta, db_path)
+    
+    asyncio.run(add_delta())
+        # app.start()
+        
 
         
     # Удаление ненужных файлов
@@ -210,8 +215,10 @@ def add_full_cve_json_files(folder_path_full, db_path):
     # Close connection
     conn.close()
    
- 
+count = 0
+
 async def add_delta_cve_json_files(folder_path_delta, db_path):
+    
     # Connect to database
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -243,12 +250,11 @@ async def add_delta_cve_json_files(folder_path_delta, db_path):
             c.execute("""INSERT INTO cve (cveId, jsonData)
                          VALUES (?, ?)""", (cveId, json.dumps(json_data)))
             conn.commit()
-            print(f"CVE record with ID {cveId} inserted successfully.")
-            print("КАКОЙ CVE---", cveId)
+            global count
+            count += 1
+            print(f"CVE record with ID {cveId} inserted successfully. {count}")
+            # print("КАКОЙ CVE---", cveId)
             await send_cve_to_telegram(cveId)
-        
-        # cveId = "CVE-2023-3235"
-        # print("КАКОЙ CVE", cveId)
         
     # Close connection
     conn.close()
@@ -261,14 +267,8 @@ async def add_delta_cve_json_files(folder_path_delta, db_path):
 if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
     download_full_cve()
 
-# Временно для тестов !!!!
-# if not os.path.isdir("tmp_delta") or not os.listdir("tmp_delta"):
-#     os.remove(f"tmp_delta/tmp_delta.zip") 
-#     shutil.rmtree(f'tmp_full/cvelistV5-cve_{download_date}')
 
 download_delta_cve()
-
-
 
 
 

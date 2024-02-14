@@ -12,3 +12,10 @@ parsing cve
 
 4) Скачиваем дельты
 https://github.com/CVEProject/cvelistV5/releases/download/cve_2024-02-12_0800Z/2024-02-12_delta_CVEs_at_0800Z.zip
+
+cve, json, time, type_status, status
+type_status - update or new
+status - new or old
+
+pcve - install, update data in db
+pcve_bot - input/output message

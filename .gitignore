@@ -1,3 +1,4 @@
 db/*
 tmp_delta/*
 tmp_full/*
+__pycache__/*
