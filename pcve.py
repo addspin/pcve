@@ -21,7 +21,6 @@ channel_id = '-1002009744461'
 
 app = Celery('pcve', broker='redis://localhost:6379/0')
 
-
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
 download_date = current_datetime.strftime("%Y-%m-%d_%H00Z")
@@ -114,8 +113,6 @@ async def send_cve_to_telegram(cveId):
     except Exception as e:
         print(f"Ошибка при отправке сообщения: {e}")
 
-    # asyncio.run(send_cve_to_telegram(cveId))
-
 def download_full_cve():
     # URL-адрес архива
     url = f"https://github.com/CVEProject/cvelistV5/archive/refs/tags/cve_{download_date}.zip"
@@ -131,9 +128,10 @@ def download_full_cve():
     with zipfile.ZipFile("tmp_full/tmp_full.zip", "r") as zip_ref:
         zip_ref.extractall("tmp_full")
         
-    # add JSON files in db BLOB
-    # if not os.path.exists('tmp_full/install_complete'):
-    # add_full_cve_json_files(folder_path_full, db_path)
+    os.remove(f"tmp_full/tmp_full.zip")
+    os.remove(f"tmp_full/tmp_full.zip")
+    
+    # recursive search file for add JSON files in db BLOB
     list_files(folder_path_full)
 
     # Удаление ненужных файлов
@@ -179,6 +177,7 @@ def list_files(folder_path_full):
             list_files(filepath)
 
 count = 0
+# add JSON files in db BLOB
 def add_full_cve_json_files(json_data):
     # Connect to database
     conn = sqlite3.connect(db_path)
@@ -210,43 +209,6 @@ def add_full_cve_json_files(json_data):
         print(f"CVE record with ID {cveId} inserted successfully. {count}")
     # Close connection
     conn.close()
-
-# def add_full_cve_json_files(folder_path_full, db_path):
-#     # Connect to database
-#     conn = sqlite3.connect(db_path)
-#     c = conn.cursor()
-
-#     # Create table if not exists
-#     c.execute('''CREATE TABLE IF NOT EXISTS cve (
-#         cveId TEXT PRIMARY KEY NOT NULL UNIQUE,
-#         jsonData BLOB,
-#         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-#     )''')
-
-#     # Iterate through JSON files
-#     for filename in os.listdir(folder_path_full):
-#         filepath = os.path.join(folder_path_full, filename)
-#         with open(filepath, 'r') as f:
-#             json_data = json.load(f)
-
-#         cveId = json_data['cveMetadata']['cveId']
-
-#         # Check for existing entry
-#         existing_entry = c.execute("SELECT * FROM cve WHERE cveId = ?", (cveId,)).fetchone()
-
-#         if existing_entry:
-#             c.execute("""UPDATE cve SET jsonData = ?
-#                              WHERE cveId = ?""", (json.dumps(json_data), cveId))
-#             conn.commit()
-#         else:
-#             # Insert new record
-#             c.execute("""INSERT INTO cve (cveId, jsonData)
-#                          VALUES (?, ?)""", (cveId, json.dumps(json_data)))
-#             conn.commit()
-#             count += 1
-#             print(f"CVE record with ID {cveId} inserted successfully. {count}")
-#     # Close connection
-#     conn.close()
    
 count = 0
 async def add_delta_cve_json_files(folder_path_delta, db_path):
@@ -292,12 +254,11 @@ async def add_delta_cve_json_files(folder_path_delta, db_path):
     conn.close()
 
 ## if not install - INIT!
-# if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
-#     download_full_cve()
-list_files(folder_path_full)
-# download_full_cve()
+if not os.path.isdir("tmp_full") or not os.listdir("tmp_full"): 
+    download_full_cve()
+    list_files(folder_path_full)
 
-# download_delta_cve()
+download_delta_cve()
 
 
 
