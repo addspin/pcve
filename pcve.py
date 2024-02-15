@@ -16,8 +16,6 @@ bot = aiogram.Bot(token=config.token)
 group_id = config.group_id
 channel_id = config.channel_id
 
-# app = Celery('pcve', broker='redis://localhost:6379/0')
-
 # Текущая дата
 current_datetime  = datetime.now(timezone.utc)
 download_date = current_datetime.strftime("%Y-%m-%d_%H00Z")
@@ -32,7 +30,7 @@ db_path = "db/pcve.db"
 
 message_count = 0
 max_messages = 19
-# @app.task
+
 async def send_cve_to_telegram(cveId):
     global message_count
     if message_count >= max_messages:
@@ -104,7 +102,7 @@ async def send_cve_to_telegram(cveId):
 <b>Attack Complexity:</b> {attackComplexity}
 <b>Exploits:</b> {exploits}\n
 <b>Description:</b> {first_description_value}\n'''
-    if all(c != " " for c in [version, baseSeverity, product_affecteds_value, vendor_affecteds_value, attackVector, attackComplexity, exploits, first_description_value]):
+    if any(c != " " for c in [version, baseSeverity, product_affecteds_value, vendor_affecteds_value, attackVector, attackComplexity, exploits, first_description_value]):
         try:
             await bot.send_message(chat_id=group_id, text=message, parse_mode="HTML")
         except Exception as e:
