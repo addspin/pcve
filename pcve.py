@@ -10,12 +10,11 @@ import shutil
 import telegram
 import aiogram
 import asyncio
+import config
 
-
-# bot = telegram.Bot(token='6379047592:AAGF_dv5GUOry9vDph03-bNAWdbpFQR4AJI')
-bot = aiogram.Bot(token='6379047592:AAGF_dv5GUOry9vDph03-bNAWdbpFQR4AJI')
-group_id = '-4142947007'
-channel_id = '-1002009744461'
+bot = aiogram.Bot(token=config.token)
+group_id = config.group_id
+channel_id = config.channel_id
 
 # app = Celery('pcve', broker='redis://localhost:6379/0')
 
@@ -82,7 +81,7 @@ async def send_cve_to_telegram(cveId):
     version = " "
     attackVector = " "
     attackComplexity = " "
-    baseSeverity =  ""
+    baseSeverity =  " "
 
     if "metrics" in json_data["containers"]["cna"]:
         metrics = json_data['containers']['cna']['metrics']
@@ -105,11 +104,11 @@ async def send_cve_to_telegram(cveId):
 <b>Attack Complexity:</b> {attackComplexity}
 <b>Exploits:</b> {exploits}\n
 <b>Description:</b> {first_description_value}\n'''
-   
-    try:
-        await bot.send_message(chat_id=group_id, text=message, parse_mode="HTML")
-    except Exception as e:
-        print(f"Ошибка при отправке сообщения: {e}")
+    if all(c != " " for c in [version, baseSeverity, product_affecteds_value, vendor_affecteds_value, attackVector, attackComplexity, exploits, first_description_value]):
+        try:
+            await bot.send_message(chat_id=group_id, text=message, parse_mode="HTML")
+        except Exception as e:
+            print(f"Ошибка при отправке сообщения: {e}")
 
 def download_full_cve():
     # URL-адрес архива
@@ -126,8 +125,8 @@ def download_full_cve():
     with zipfile.ZipFile("tmp_full/tmp_full.zip", "r") as zip_ref:
         zip_ref.extractall("tmp_full")
         
-    os.remove(f"tmp_full/tmp_full.zip")
-    os.remove(f"tmp_full/tmp_full.zip")
+    os.remove(f"tmp_full/cvelistV5-cve_{download_date}/cves/delta.json")
+    os.remove(f"tmp_full/cvelistV5-cve_{download_date}/cves/deltaLog.json")
     
     # recursive search file for add JSON files in db BLOB
     list_files(folder_path_full)
